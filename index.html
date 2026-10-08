@@ -10,15 +10,15 @@
   canvas { display: block; }
   #hud {
     position: fixed; top: 16px; left: 20px;
-    color: #4ade80;
-    font: 700 20px system-ui, sans-serif;
-    text-shadow: 0 2px 10px rgba(0,0,0,0.9);
+    color: #ffcc44;
+    font: 700 22px system-ui, sans-serif;
+    text-shadow: 0 0 12px rgba(255,180,80,0.8), 0 2px 10px rgba(0,0,0,0.9);
     pointer-events: none; z-index: 10;
   }
   #loading {
     position: fixed; inset: 0;
     display: flex; align-items: center; justify-content: center;
-    background: #0a0a0f; color: #4ade80;
+    background: #1a0a20; color: #ffcc44;
     font: 700 22px system-ui, sans-serif;
     z-index: 100;
   }
@@ -43,203 +43,473 @@ import * as THREE from 'three';
 // 1. SCENE, CAMERA, RENDERER
 // ============================================================
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x0a0a1f);
-scene.fog = new THREE.Fog(0x0a0a1f, 40, 110);
+scene.fog = new THREE.FogExp2(0x3a1a3a, 0.012);
 
 const camera = new THREE.PerspectiveCamera(
-  70,
+  68,
   window.innerWidth / window.innerHeight,
   0.1,
-  300
+  400
 );
-camera.position.set(0, 4.5, -8);
-camera.lookAt(0, 1.5, 15);
+camera.position.set(0, 4.2, -8.5);
+camera.lookAt(0, 1.6, 20);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
 document.body.appendChild(renderer.domElement);
 
 // ============================================================
-// 2. LIGHTING
+// 2. SUNSET SKY (custom gradient shader dome)
 // ============================================================
-scene.add(new THREE.AmbientLight(0x8899ff, 0.7));
-
-const moon = new THREE.DirectionalLight(0xffffff, 1.2);
-moon.position.set(-15, 25, -10);
-moon.castShadow = true;
-moon.shadow.mapSize.set(1024, 1024);
-moon.shadow.camera.left = -25;
-moon.shadow.camera.right = 25;
-moon.shadow.camera.top = 25;
-moon.shadow.camera.bottom = -25;
-scene.add(moon);
-
-const rimLight = new THREE.DirectionalLight(0x22d3ee, 0.6);
-rimLight.position.set(15, 10, 25);
-scene.add(rimLight);
-
-// ============================================================
-// 3. THE ROAD
-// ============================================================
-const ROAD_WIDTH = 9;
-const ROAD_LENGTH = 500;
-
-const roadGeo = new THREE.PlaneGeometry(ROAD_WIDTH, ROAD_LENGTH);
-const roadMat = new THREE.MeshStandardMaterial({
-  color: 0x252540,
-  roughness: 0.9,
-  metalness: 0.1
+const skyGeo = new THREE.SphereGeometry(300, 32, 16);
+const skyMat = new THREE.ShaderMaterial({
+  side: THREE.BackSide,
+  uniforms: {
+    topColor:    { value: new THREE.Color(0x1a0b2e) },
+    midColor:    { value: new THREE.Color(0x6b1f4a) },
+    bottomColor: { value: new THREE.Color(0xff6a3d) }
+  },
+  vertexShader: `
+    varying vec3 vWorldPos;
+    void main() {
+      vec4 wp = modelMatrix * vec4(position, 1.0);
+      vWorldPos = wp.xyz;
+      gl_Position = projectionMatrix * viewMatrix * wp;
+    }
+  `,
+  fragmentShader: `
+    uniform vec3 topColor;
+    uniform vec3 midColor;
+    uniform vec3 bottomColor;
+    varying vec3 vWorldPos;
+    void main() {
+      float h = normalize(vWorldPos).y;
+      vec3 color;
+      if (h > 0.0) {
+        color = mix(midColor, topColor, pow(h, 0.6));
+      } else {
+        color = mix(midColor, bottomColor, pow(-h, 0.5));
+      }
+      gl_FragColor = vec4(color, 1.0);
+    }
+  `
 });
-const road = new THREE.Mesh(roadGeo, roadMat);
+scene.add(new THREE.Mesh(skyGeo, skyMat));
+
+// Sun disc near horizon
+const sunSprite = new THREE.Mesh(
+  new THREE.CircleGeometry(18, 32),
+  new THREE.MeshBasicMaterial({ color: 0xffaa55, transparent: true, opacity: 0.85 })
+);
+sunSprite.position.set(-40, 12, 120);
+sunSprite.lookAt(camera.position);
+scene.add(sunSprite);
+
+// ============================================================
+// 3. LIGHTING (warm sunset + cool rim)
+// ============================================================
+scene.add(new THREE.AmbientLight(0x6040a0, 0.5));
+
+const sun = new THREE.DirectionalLight(0xffaa66, 1.6);
+sun.position.set(-30, 25, 30);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.left = -30;
+sun.shadow.camera.right = 30;
+sun.shadow.camera.top = 30;
+sun.shadow.camera.bottom = -30;
+sun.shadow.camera.near = 1;
+sun.shadow.camera.far = 120;
+sun.shadow.bias = -0.0005;
+scene.add(sun);
+
+const rim = new THREE.DirectionalLight(0x44aaff, 0.7);
+rim.position.set(20, 8, -20);
+scene.add(rim);
+
+const fill = new THREE.DirectionalLight(0xff88cc, 0.35);
+fill.position.set(10, 5, 30);
+scene.add(fill);
+
+// ============================================================
+// 4. PROCEDURAL STONE ROAD TEXTURE
+// ============================================================
+function makeRoadTexture() {
+  const size = 512;
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const x = c.getContext('2d');
+
+  // Base stone color
+  x.fillStyle = '#3a3450';
+  x.fillRect(0, 0, size, size);
+
+  // Random stone tiles
+  const tiles = 8;
+  const tileSize = size / tiles;
+  for (let i = 0; i < tiles; i++) {
+    for (let j = 0; j < tiles; j++) {
+      const shade = 40 + Math.random() * 35;
+      x.fillStyle = `rgb(${shade + 10}, ${shade + 5}, ${shade + 25})`;
+      x.fillRect(
+        i * tileSize + 2,
+        j * tileSize + 2,
+        tileSize - 4,
+        tileSize - 4
+      );
+
+      // Cracks / noise
+      x.strokeStyle = 'rgba(0,0,0,0.25)';
+      x.lineWidth = 1;
+      for (let k = 0; k < 3; k++) {
+        x.beginPath();
+        const px = i * tileSize + Math.random() * tileSize;
+        const py = j * tileSize + Math.random() * tileSize;
+        x.moveTo(px, py);
+        x.lineTo(px + (Math.random() - 0.5) * 20, py + (Math.random() - 0.5) * 20);
+        x.stroke();
+      }
+    }
+  }
+
+  // Moss specks
+  for (let i = 0; i < 200; i++) {
+    x.fillStyle = `rgba(60,${100 + Math.random() * 80},60,${0.15 + Math.random() * 0.2})`;
+    x.beginPath();
+    x.arc(Math.random() * size, Math.random() * size, 2 + Math.random() * 5, 0, Math.PI * 2);
+    x.fill();
+  }
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(2, 30);
+  tex.anisotropy = 8;
+  return tex;
+}
+
+const ROAD_WIDTH = 10;
+const ROAD_LENGTH = 600;
+
+const road = new THREE.Mesh(
+  new THREE.PlaneGeometry(ROAD_WIDTH, ROAD_LENGTH),
+  new THREE.MeshStandardMaterial({
+    map: makeRoadTexture(),
+    roughness: 0.85,
+    metalness: 0.15,
+    color: 0xffffff
+  })
+);
 road.rotation.x = -Math.PI / 2;
 road.position.set(0, 0, ROAD_LENGTH / 2 - 30);
 road.receiveShadow = true;
 scene.add(road);
 
-// Glowing lane divider lines
+// Glowing lane lines
 for (let lane = -1; lane <= 1; lane += 2) {
-  const lineGeo = new THREE.PlaneGeometry(0.18, ROAD_LENGTH);
-  const lineMat = new THREE.MeshBasicMaterial({ color: 0x22d3ee });
-  const line = new THREE.Mesh(lineGeo, lineMat);
+  const line = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.16, ROAD_LENGTH),
+    new THREE.MeshBasicMaterial({ color: 0x44e0ff })
+  );
   line.rotation.x = -Math.PI / 2;
-  line.position.set(lane * (ROAD_WIDTH / 3), 0.01, ROAD_LENGTH / 2 - 30);
+  line.position.set(lane * (ROAD_WIDTH / 3), 0.02, ROAD_LENGTH / 2 - 30);
   scene.add(line);
 }
 
 // ============================================================
-// 4. SIDE PILLARS (temple corridor)
+// 5. TEMPLE WALLS (layered bricks)
 // ============================================================
+function makeBrickTexture(baseHue) {
+  const size = 256;
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const x = c.getContext('2d');
+  x.fillStyle = `hsl(${baseHue}, 30%, 22%)`;
+  x.fillRect(0, 0, size, size);
+
+  const rows = 10;
+  const brickH = size / rows;
+  for (let r = 0; r < rows; r++) {
+    const offset = (r % 2) * 40;
+    for (let bx = -40; bx < size + 40; bx += 80) {
+      const shade = 20 + Math.random() * 15;
+      x.fillStyle = `hsl(${baseHue + Math.random() * 10}, 25%, ${shade}%)`;
+      x.fillRect(bx + offset + 2, r * brickH + 2, 76, brickH - 4);
+    }
+  }
+  // Moss patches
+  for (let i = 0; i < 60; i++) {
+    x.fillStyle = `rgba(40, 90, 50, ${0.2 + Math.random() * 0.3})`;
+    x.beginPath();
+    x.arc(Math.random() * size, Math.random() * size, 5 + Math.random() * 12, 0, Math.PI * 2);
+    x.fill();
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(2, 4);
+  return tex;
+}
+
+const brickTex = makeBrickTexture(260); // purple-ish hue
+
 const PILLAR_COUNT = 30;
-const PILLAR_SPACING = 14;
+const PILLAR_SPACING = 16;
 const pillars = [];
 
-const pillarGeo = new THREE.BoxGeometry(1.6, 7, 1.6);
 const pillarMat = new THREE.MeshStandardMaterial({
-  color: 0x4a3a6a,
-  roughness: 0.85,
-  emissive: 0x1a0a2a,
-  emissiveIntensity: 0.5
+  map: brickTex,
+  roughness: 0.9,
+  metalness: 0.05
 });
-
-const capGeo = new THREE.BoxGeometry(2.0, 0.3, 2.0);
-const capMat = new THREE.MeshBasicMaterial({ color: 0x22d3ee });
 
 for (let i = 0; i < PILLAR_COUNT; i++) {
   for (let side = -1; side <= 1; side += 2) {
-    const p = new THREE.Mesh(pillarGeo, pillarMat);
-    p.position.set(side * (ROAD_WIDTH / 2 + 1.8), 3.5, i * PILLAR_SPACING);
-    p.castShadow = true;
-    p.receiveShadow = true;
-    scene.add(p);
-    pillars.push(p);
+    const group = new THREE.Group();
 
-    const cap = new THREE.Mesh(capGeo, capMat);
-    cap.position.set(p.position.x, 7.15, p.position.z);
-    scene.add(cap);
-    p.userData.cap = cap;
+    // Base
+    const base = new THREE.Mesh(
+      new THREE.BoxGeometry(2.2, 0.6, 2.2),
+      pillarMat
+    );
+    base.position.y = 0.3;
+    base.castShadow = true;
+    base.receiveShadow = true;
+    group.add(base);
+
+    // Shaft (layered, slight taper)
+    const shaft = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.85, 0.95, 7, 8),
+      pillarMat
+    );
+    shaft.position.y = 4.1;
+    shaft.castShadow = true;
+    shaft.receiveShadow = true;
+    group.add(shaft);
+
+    // Ring details
+    for (let r = 0; r < 3; r++) {
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(0.9, 0.08, 8, 16),
+        new THREE.MeshStandardMaterial({ color: 0x3a2a5a, roughness: 0.6, metalness: 0.3 })
+      );
+      ring.rotation.x = Math.PI / 2;
+      ring.position.y = 1.5 + r * 2.5;
+      group.add(ring);
+    }
+
+    // Cap
+    const cap = new THREE.Mesh(
+      new THREE.BoxGeometry(2.3, 0.5, 2.3),
+      pillarMat
+    );
+    cap.position.y = 7.9;
+    cap.castShadow = true;
+    group.add(cap);
+
+    // Glowing top line
+    const glow = new THREE.Mesh(
+      new THREE.BoxGeometry(2.4, 0.08, 2.4),
+      new THREE.MeshBasicMaterial({ color: 0x44e0ff })
+    );
+    glow.position.y = 8.18;
+    group.add(glow);
+
+    group.position.set(side * (ROAD_WIDTH / 2 + 2.2), 0, i * PILLAR_SPACING);
+    scene.add(group);
+    pillars.push(group);
   }
 }
 
 // ============================================================
-// 5. THE CHARACTER (orange T-shirt with DP logo)
+// 6. ADVANCED CHARACTER (procedural humanoid)
 // ============================================================
 const character = new THREE.Group();
 character.position.set(0, 0, 0);
 scene.add(character);
 
-// Body — orange T-shirt torso
-const bodyMat = new THREE.MeshStandardMaterial({
-  color: 0xff6a1a,
-  emissive: 0x3a1000,
-  emissiveIntensity: 0.4,
-  roughness: 0.6
-});
-const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.45, 0.85, 8, 16), bodyMat);
-body.position.y = 1.2;
-body.castShadow = true;
-character.add(body);
+const SHIRT_COLOR = 0xff6a1a;
+const SKIN_COLOR = 0xf0b088;
+const PANTS_COLOR = 0x2a3050;
+const SHOE_COLOR = 0x1a1a22;
 
-// DP logo on the BACK of the shirt
+const shirtMat = new THREE.MeshStandardMaterial({ color: SHIRT_COLOR, roughness: 0.55 });
+const skinMat  = new THREE.MeshStandardMaterial({ color: SKIN_COLOR, roughness: 0.7 });
+const pantsMat = new THREE.MeshStandardMaterial({ color: PANTS_COLOR, roughness: 0.8 });
+const shoeMat  = new THREE.MeshStandardMaterial({ color: SHOE_COLOR, roughness: 0.5 });
+
+// --- HIPS (root of the character) ---
+const hips = new THREE.Group();
+hips.position.y = 0.95;
+character.add(hips);
+
+// --- TORSO (chest) ---
+const torso = new THREE.Mesh(
+  new THREE.BoxGeometry(0.72, 0.85, 0.42),
+  shirtMat
+);
+torso.position.y = 0.42;
+torso.castShadow = true;
+hips.add(torso);
+
+// Slight shoulder shape
+const shoulders = new THREE.Mesh(
+  new THREE.BoxGeometry(0.92, 0.28, 0.44),
+  shirtMat
+);
+shoulders.position.y = 0.78;
+shoulders.castShadow = true;
+hips.add(shoulders);
+
+// --- DP LOGO on the back ---
 const dpCanvas = document.createElement('canvas');
-dpCanvas.width = dpCanvas.height = 128;
+dpCanvas.width = dpCanvas.height = 256;
 const dpx = dpCanvas.getContext('2d');
+dpx.fillStyle = 'rgba(0,0,0,0)';
+dpx.fillRect(0, 0, 256, 256);
+// Circle badge
+dpx.beginPath();
+dpx.arc(128, 128, 90, 0, Math.PI * 2);
 dpx.fillStyle = '#0a0a1f';
-dpx.fillRect(0, 0, 128, 128);
+dpx.fill();
+dpx.lineWidth = 10;
+dpx.strokeStyle = '#44e0ff';
+dpx.stroke();
+// DP text
 dpx.fillStyle = '#ffffff';
-dpx.font = 'bold 60px system-ui, sans-serif';
+dpx.font = 'bold 96px system-ui, sans-serif';
 dpx.textAlign = 'center';
 dpx.textBaseline = 'middle';
-dpx.fillText('DP', 64, 68);
+dpx.fillText('DP', 128, 138);
 const dpTex = new THREE.CanvasTexture(dpCanvas);
 const dpLogo = new THREE.Mesh(
-  new THREE.PlaneGeometry(0.6, 0.6),
+  new THREE.PlaneGeometry(0.55, 0.55),
   new THREE.MeshBasicMaterial({ map: dpTex, transparent: true })
 );
-dpLogo.position.set(0, 1.3, -0.47);
+dpLogo.position.set(0, 0.42, -0.221);
 dpLogo.rotation.y = Math.PI;
-character.add(dpLogo);
+hips.add(dpLogo);
 
-// Head
-const head = new THREE.Mesh(
-  new THREE.SphereGeometry(0.32, 16, 16),
-  new THREE.MeshStandardMaterial({ color: 0xf0c090, roughness: 0.7 })
+// --- HEAD ---
+const neck = new THREE.Mesh(
+  new THREE.CylinderGeometry(0.11, 0.11, 0.14, 8),
+  skinMat
 );
-head.position.y = 2.0;
+neck.position.y = 1.02;
+hips.add(neck);
+
+const head = new THREE.Mesh(
+  new THREE.BoxGeometry(0.42, 0.46, 0.42),
+  skinMat
+);
+head.position.y = 1.35;
 head.castShadow = true;
-character.add(head);
+hips.add(head);
 
-// Legs
-const legGeo = new THREE.CylinderGeometry(0.13, 0.13, 0.7, 8);
-const legMat = new THREE.MeshStandardMaterial({ color: 0x222244 });
-const leftLeg = new THREE.Mesh(legGeo, legMat);
-leftLeg.position.set(-0.18, 0.35, 0);
-leftLeg.castShadow = true;
-character.add(leftLeg);
+// Hair cap
+const hair = new THREE.Mesh(
+  new THREE.BoxGeometry(0.46, 0.14, 0.46),
+  new THREE.MeshStandardMaterial({ color: 0x2a1a0a, roughness: 0.9 })
+);
+hair.position.y = 1.58;
+hips.add(hair);
 
-const rightLeg = new THREE.Mesh(legGeo, legMat);
-rightLeg.position.set(0.18, 0.35, 0);
-rightLeg.castShadow = true;
-character.add(rightLeg);
+// --- ARMS (upper + lower + hand) ---
+function makeArm(side) {
+  const arm = new THREE.Group();
+  arm.position.set(side * 0.5, 0.85, 0);
 
-// Arms
-const armGeo = new THREE.CylinderGeometry(0.11, 0.11, 0.8, 8);
-const armMat = new THREE.MeshStandardMaterial({ color: 0xff6a1a });
-const leftArm = new THREE.Mesh(armGeo, armMat);
-leftArm.position.set(-0.55, 1.2, 0);
-leftArm.castShadow = true;
-character.add(leftArm);
+  const upper = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.09, 0.09, 0.45, 8),
+    shirtMat
+  );
+  upper.position.y = -0.22;
+  upper.castShadow = true;
+  arm.add(upper);
 
-const rightArm = new THREE.Mesh(armGeo, armMat);
-rightArm.position.set(0.55, 1.2, 0);
-rightArm.castShadow = true;
-character.add(rightArm);
+  const lower = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.08, 0.08, 0.42, 8),
+    skinMat
+  );
+  lower.position.y = -0.65;
+  lower.castShadow = true;
+  arm.add(lower);
+
+  const hand = new THREE.Mesh(
+    new THREE.BoxGeometry(0.14, 0.14, 0.12),
+    skinMat
+  );
+  hand.position.y = -0.9;
+  hand.castShadow = true;
+  arm.add(hand);
+
+  hips.add(arm);
+  return arm;
+}
+const leftArm  = makeArm(-1);
+const rightArm = makeArm(1);
+
+// --- LEGS (upper + lower + shoe) ---
+function makeLeg(side) {
+  const leg = new THREE.Group();
+  leg.position.set(side * 0.19, 0, 0);
+
+  const upper = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.12, 0.11, 0.5, 8),
+    pantsMat
+  );
+  upper.position.y = -0.28;
+  upper.castShadow = true;
+  leg.add(upper);
+
+  const lower = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.1, 0.09, 0.45, 8),
+    pantsMat
+  );
+  lower.position.y = -0.78;
+  lower.castShadow = true;
+  leg.add(lower);
+
+  const shoe = new THREE.Mesh(
+    new THREE.BoxGeometry(0.2, 0.12, 0.32),
+    shoeMat
+  );
+  shoe.position.set(0, -1.02, 0.06);
+  shoe.castShadow = true;
+  leg.add(shoe);
+
+  hips.add(leg);
+  return leg;
+}
+const leftLeg  = makeLeg(-1);
+const rightLeg = makeLeg(1);
 
 // Shadow blob
 const blob = new THREE.Mesh(
-  new THREE.CircleGeometry(0.65, 24),
-  new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.45 })
+  new THREE.CircleGeometry(0.75, 32),
+  new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.5 })
 );
 blob.rotation.x = -Math.PI / 2;
-blob.position.y = 0.02;
+blob.position.y = 0.01;
 character.add(blob);
 
 // ============================================================
-// 6. GROUND RUNNING STRIPES (speed feedback)
+// 7. GROUND STRIPES (speed feedback)
 // ============================================================
 const stripes = [];
-const stripeGeo = new THREE.PlaneGeometry(0.5, 3);
+const stripeGeo = new THREE.PlaneGeometry(0.5, 3.5);
 const stripeMat = new THREE.MeshBasicMaterial({
-  color: 0x22d3ee, transparent: true, opacity: 0.4
+  color: 0x44e0ff, transparent: true, opacity: 0.35
 });
-for (let i = 0; i < 60; i++) {
+for (let i = 0; i < 70; i++) {
   const s = new THREE.Mesh(stripeGeo, stripeMat);
   s.rotation.x = -Math.PI / 2;
   s.position.set(
     (Math.floor(Math.random() * 3) - 1) * (ROAD_WIDTH / 3),
-    0.015,
+    0.03,
     i * 8
   );
   scene.add(s);
@@ -247,13 +517,14 @@ for (let i = 0; i < 60; i++) {
 }
 
 // ============================================================
-// 7. GAME STATE + LOOP
+// 8. GAME LOOP
 // ============================================================
-let speed = 14;
+let speed = 15;
 let score = 0;
 let time = 0;
 const scoreEl = document.getElementById('score');
 const clock = new THREE.Clock();
+const CAM_BASE = new THREE.Vector3(0, 4.2, -8.5);
 
 function animate() {
   const dt = Math.min(clock.getDelta(), 0.05);
@@ -263,45 +534,51 @@ function animate() {
   score += delta * 0.8;
   scoreEl.textContent = Math.floor(score);
 
-  // Scroll pillars toward camera
+  // Scroll pillars
   pillars.forEach(p => {
     p.position.z -= delta;
-    if (p.userData.cap) p.userData.cap.position.z = p.position.z;
-    if (p.position.z < -25) {
+    if (p.position.z < -30) {
       p.position.z += PILLAR_COUNT * PILLAR_SPACING;
-      if (p.userData.cap) p.userData.cap.position.z = p.position.z;
     }
   });
 
   // Scroll stripes
   stripes.forEach(s => {
     s.position.z -= delta;
-    if (s.position.z < -15) s.position.z += 480;
+    if (s.position.z < -15) s.position.z += 560;
   });
 
-  // Animate legs + arms (running cycle)
-  const swing = Math.sin(time * 15) * 0.55;
-  leftLeg.rotation.x = swing;
+  // --- Running animation ---
+  const swing = Math.sin(time * 16) * 0.85;
+  const bob = Math.abs(Math.sin(time * 16)) * 0.08;
+
+  leftLeg.rotation.x  = swing;
   rightLeg.rotation.x = -swing;
-  leftArm.rotation.x = -swing;
-  rightArm.rotation.x = swing;
+  leftArm.rotation.x  = -swing * 0.9;
+  rightArm.rotation.x = swing * 0.9;
+
+  // Arms swing outward slightly
+  leftArm.rotation.z  = 0.15;
+  rightArm.rotation.z = -0.15;
 
   // Body bob
-  const bob = Math.abs(Math.sin(time * 15)) * 0.06;
-  body.position.y = 1.2 + bob;
-  head.position.y = 2.0 + bob;
-  dpLogo.position.y = 1.3 + bob;
+  hips.position.y = 0.95 + bob;
+  hips.rotation.z = Math.sin(time * 16) * 0.02;
+
+  // Head slight nod
+  head.rotation.x = Math.sin(time * 16) * 0.05;
 
   // Camera sway
-  camera.position.x = Math.sin(time * 2) * 0.18;
-  camera.lookAt(0, 1.5, 15);
+  camera.position.x = CAM_BASE.x + Math.sin(time * 2) * 0.15;
+  camera.position.y = CAM_BASE.y + Math.sin(time * 1.3) * 0.08;
+  camera.lookAt(0, 1.6, 20);
 
   renderer.render(scene, camera);
   requestAnimationFrame(animate);
 }
 
 // ============================================================
-// 8. RESIZE
+// 9. RESIZE
 // ============================================================
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
@@ -310,7 +587,7 @@ window.addEventListener('resize', () => {
 });
 
 // ============================================================
-// 9. BOOT
+// 10. BOOT
 // ============================================================
 document.getElementById('loading').remove();
 animate();
