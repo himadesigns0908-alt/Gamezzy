@@ -2,397 +2,318 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Gamezzy Runner</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    background: #0a0a0f;
-    color: #fff;
-    font-family: system-ui, sans-serif;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    min-height: 100vh;
-    overflow: hidden;
-    user-select: none;
-  }
-  #wrap { position: relative; }
-  canvas {
-    background: linear-gradient(180deg, #1a1a2e 0%, #16213e 60%, #0f3460 100%);
-    border-radius: 12px;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.6);
-    display: block;
-  }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
+  canvas { display: block; }
   #hud {
-    position: absolute;
-    top: 16px;
-    left: 20px;
-    right: 20px;
-    display: flex;
-    justify-content: space-between;
-    font-weight: 700;
-    font-size: 18px;
-    text-shadow: 0 2px 8px rgba(0,0,0,0.8);
-    pointer-events: none;
+    position: fixed; top: 16px; left: 20px;
+    color: #4ade80;
+    font: 700 20px system-ui, sans-serif;
+    text-shadow: 0 2px 10px rgba(0,0,0,0.9);
+    pointer-events: none; z-index: 10;
   }
-  #hud .score { color: #4ade80; }
-  #hud .best  { color: #facc15; }
-  #start, #gameover {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    background: rgba(10,10,15,0.85);
-    border-radius: 12px;
-    text-align: center;
-    gap: 14px;
+  #loading {
+    position: fixed; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: #0a0a0f; color: #4ade80;
+    font: 700 22px system-ui, sans-serif;
+    z-index: 100;
   }
-  #start h1 { font-size: 42px; background: linear-gradient(90deg,#4ade80,#22d3ee); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-  #start p, #gameover p { color: #94a3b8; font-size: 15px; }
-  button {
-    padding: 12px 28px;
-    font-size: 16px;
-    font-weight: 700;
-    background: #4ade80;
-    color: #0a0a0f;
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: transform .1s;
-  }
-  button:hover { transform: scale(1.05); }
-  #gameover { display: none; }
-  #gameover h2 { font-size: 36px; color: #ef4444; }
-  #gameover .final { font-size: 22px; color: #4ade80; font-weight: 700; }
 </style>
 </head>
 <body>
-<div id="wrap">
-  <canvas id="c" width="800" height="400"></canvas>
-  <div id="hud">
-    <div class="score">SCORE: <span id="score">0</span></div>
-    <div class="best">BEST: <span id="best">0</span></div>
-  </div>
-  <div id="start">
-    <h1>GAMEZZY RUNNER</h1>
-    <p>Press SPACE or CLICK to jump · Double-jump supported</p>
-    <button id="startBtn">Start Run</button>
-  </div>
-  <div id="gameover">
-    <h2>GAME OVER</h2>
-    <div class="final">Score: <span id="finalScore">0</span></div>
-    <p>Press SPACE to try again</p>
-    <button id="retryBtn">Try Again</button>
-  </div>
-</div>
+<div id="loading">Loading world…</div>
+<div id="hud">SCORE: <span id="score">0</span></div>
 
-<script>
-const canvas = document.getElementById('c');
-const ctx = canvas.getContext('2d');
-const W = canvas.width, H = canvas.height;
-const GROUND_Y = H - 60;
-
-let state = 'menu'; // menu | playing | dead
-let score = 0;
-let best = parseInt(localStorage.getItem('gamezzy_best') || '0');
-document.getElementById('best').textContent = best;
-
-// ---------- Player ----------
-const player = {
-  x: 120, y: GROUND_Y, w: 40, h: 50,
-  vy: 0, jumps: 0,
-  maxJumps: 2,
-  gravity: 0.9,
-  jumpForce: -15,
-  color: '#4ade80',
-  legPhase: 0
-};
-
-// ---------- World ----------
-let obstacles = [];
-let particles = [];
-let clouds = [];
-let groundOffset = 0;
-let speed = 6;
-let spawnTimer = 0;
-let spawnInterval = 90; // frames
-let frame = 0;
-
-// ---------- Input ----------
-function jump() {
-  if (state === 'menu') { startGame(); return; }
-  if (state === 'dead') { startGame(); return; }
-  if (player.jumps < player.maxJumps) {
-    player.vy = player.jumpForce;
-    player.jumps++;
-    burst(player.x + player.w/2, player.y + player.h, 8, '#4ade80');
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
   }
 }
+</script>
 
-document.addEventListener('keydown', e => {
-  if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') {
-    e.preventDefault();
-    jump();
-  }
+<script type="module">
+import * as THREE from 'three';
+
+// ============================================================
+// 1. SCENE, CAMERA, RENDERER
+// ============================================================
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0a0a1f);
+scene.fog = new THREE.Fog(0x0a0a1f, 40, 110);
+
+const camera = new THREE.PerspectiveCamera(
+  70,
+  window.innerWidth / window.innerHeight,
+  0.1,
+  300
+);
+camera.position.set(0, 4.5, -8);
+camera.lookAt(0, 1.5, 15);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+
+// ============================================================
+// 2. LIGHTING
+// ============================================================
+scene.add(new THREE.AmbientLight(0x8899ff, 0.7));
+
+const moon = new THREE.DirectionalLight(0xffffff, 1.2);
+moon.position.set(-15, 25, -10);
+moon.castShadow = true;
+moon.shadow.mapSize.set(1024, 1024);
+moon.shadow.camera.left = -25;
+moon.shadow.camera.right = 25;
+moon.shadow.camera.top = 25;
+moon.shadow.camera.bottom = -25;
+scene.add(moon);
+
+const rimLight = new THREE.DirectionalLight(0x22d3ee, 0.6);
+rimLight.position.set(15, 10, 25);
+scene.add(rimLight);
+
+// ============================================================
+// 3. THE ROAD
+// ============================================================
+const ROAD_WIDTH = 9;
+const ROAD_LENGTH = 500;
+
+const roadGeo = new THREE.PlaneGeometry(ROAD_WIDTH, ROAD_LENGTH);
+const roadMat = new THREE.MeshStandardMaterial({
+  color: 0x252540,
+  roughness: 0.9,
+  metalness: 0.1
 });
-canvas.addEventListener('mousedown', jump);
-canvas.addEventListener('touchstart', e => { e.preventDefault(); jump(); });
-document.getElementById('startBtn').onclick = e => { e.stopPropagation(); startGame(); };
-document.getElementById('retryBtn').onclick = e => { e.stopPropagation(); startGame(); };
+const road = new THREE.Mesh(roadGeo, roadMat);
+road.rotation.x = -Math.PI / 2;
+road.position.set(0, 0, ROAD_LENGTH / 2 - 30);
+road.receiveShadow = true;
+scene.add(road);
 
-// ---------- Particles ----------
-function burst(x, y, count, color) {
-  for (let i = 0; i < count; i++) {
-    particles.push({
-      x, y,
-      vx: (Math.random() - 0.5) * 6,
-      vy: (Math.random() - 1) * 4,
-      life: 1,
-      size: 3 + Math.random() * 3,
-      color
-    });
+// Glowing lane divider lines
+for (let lane = -1; lane <= 1; lane += 2) {
+  const lineGeo = new THREE.PlaneGeometry(0.18, ROAD_LENGTH);
+  const lineMat = new THREE.MeshBasicMaterial({ color: 0x22d3ee });
+  const line = new THREE.Mesh(lineGeo, lineMat);
+  line.rotation.x = -Math.PI / 2;
+  line.position.set(lane * (ROAD_WIDTH / 3), 0.01, ROAD_LENGTH / 2 - 30);
+  scene.add(line);
+}
+
+// ============================================================
+// 4. SIDE PILLARS (temple corridor)
+// ============================================================
+const PILLAR_COUNT = 30;
+const PILLAR_SPACING = 14;
+const pillars = [];
+
+const pillarGeo = new THREE.BoxGeometry(1.6, 7, 1.6);
+const pillarMat = new THREE.MeshStandardMaterial({
+  color: 0x4a3a6a,
+  roughness: 0.85,
+  emissive: 0x1a0a2a,
+  emissiveIntensity: 0.5
+});
+
+const capGeo = new THREE.BoxGeometry(2.0, 0.3, 2.0);
+const capMat = new THREE.MeshBasicMaterial({ color: 0x22d3ee });
+
+for (let i = 0; i < PILLAR_COUNT; i++) {
+  for (let side = -1; side <= 1; side += 2) {
+    const p = new THREE.Mesh(pillarGeo, pillarMat);
+    p.position.set(side * (ROAD_WIDTH / 2 + 1.8), 3.5, i * PILLAR_SPACING);
+    p.castShadow = true;
+    p.receiveShadow = true;
+    scene.add(p);
+    pillars.push(p);
+
+    const cap = new THREE.Mesh(capGeo, capMat);
+    cap.position.set(p.position.x, 7.15, p.position.z);
+    scene.add(cap);
+    p.userData.cap = cap;
   }
 }
 
-// ---------- Clouds ----------
-function initClouds() {
-  clouds = [];
-  for (let i = 0; i < 6; i++) {
-    clouds.push({
-      x: Math.random() * W,
-      y: 40 + Math.random() * 120,
-      r: 20 + Math.random() * 30,
-      speed: 0.3 + Math.random() * 0.5
-    });
-  }
+// ============================================================
+// 5. THE CHARACTER (orange T-shirt with DP logo)
+// ============================================================
+const character = new THREE.Group();
+character.position.set(0, 0, 0);
+scene.add(character);
+
+// Body — orange T-shirt torso
+const bodyMat = new THREE.MeshStandardMaterial({
+  color: 0xff6a1a,
+  emissive: 0x3a1000,
+  emissiveIntensity: 0.4,
+  roughness: 0.6
+});
+const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.45, 0.85, 8, 16), bodyMat);
+body.position.y = 1.2;
+body.castShadow = true;
+character.add(body);
+
+// DP logo on the BACK of the shirt
+const dpCanvas = document.createElement('canvas');
+dpCanvas.width = dpCanvas.height = 128;
+const dpx = dpCanvas.getContext('2d');
+dpx.fillStyle = '#0a0a1f';
+dpx.fillRect(0, 0, 128, 128);
+dpx.fillStyle = '#ffffff';
+dpx.font = 'bold 60px system-ui, sans-serif';
+dpx.textAlign = 'center';
+dpx.textBaseline = 'middle';
+dpx.fillText('DP', 64, 68);
+const dpTex = new THREE.CanvasTexture(dpCanvas);
+const dpLogo = new THREE.Mesh(
+  new THREE.PlaneGeometry(0.6, 0.6),
+  new THREE.MeshBasicMaterial({ map: dpTex, transparent: true })
+);
+dpLogo.position.set(0, 1.3, -0.47);
+dpLogo.rotation.y = Math.PI;
+character.add(dpLogo);
+
+// Head
+const head = new THREE.Mesh(
+  new THREE.SphereGeometry(0.32, 16, 16),
+  new THREE.MeshStandardMaterial({ color: 0xf0c090, roughness: 0.7 })
+);
+head.position.y = 2.0;
+head.castShadow = true;
+character.add(head);
+
+// Legs
+const legGeo = new THREE.CylinderGeometry(0.13, 0.13, 0.7, 8);
+const legMat = new THREE.MeshStandardMaterial({ color: 0x222244 });
+const leftLeg = new THREE.Mesh(legGeo, legMat);
+leftLeg.position.set(-0.18, 0.35, 0);
+leftLeg.castShadow = true;
+character.add(leftLeg);
+
+const rightLeg = new THREE.Mesh(legGeo, legMat);
+rightLeg.position.set(0.18, 0.35, 0);
+rightLeg.castShadow = true;
+character.add(rightLeg);
+
+// Arms
+const armGeo = new THREE.CylinderGeometry(0.11, 0.11, 0.8, 8);
+const armMat = new THREE.MeshStandardMaterial({ color: 0xff6a1a });
+const leftArm = new THREE.Mesh(armGeo, armMat);
+leftArm.position.set(-0.55, 1.2, 0);
+leftArm.castShadow = true;
+character.add(leftArm);
+
+const rightArm = new THREE.Mesh(armGeo, armMat);
+rightArm.position.set(0.55, 1.2, 0);
+rightArm.castShadow = true;
+character.add(rightArm);
+
+// Shadow blob
+const blob = new THREE.Mesh(
+  new THREE.CircleGeometry(0.65, 24),
+  new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.45 })
+);
+blob.rotation.x = -Math.PI / 2;
+blob.position.y = 0.02;
+character.add(blob);
+
+// ============================================================
+// 6. GROUND RUNNING STRIPES (speed feedback)
+// ============================================================
+const stripes = [];
+const stripeGeo = new THREE.PlaneGeometry(0.5, 3);
+const stripeMat = new THREE.MeshBasicMaterial({
+  color: 0x22d3ee, transparent: true, opacity: 0.4
+});
+for (let i = 0; i < 60; i++) {
+  const s = new THREE.Mesh(stripeGeo, stripeMat);
+  s.rotation.x = -Math.PI / 2;
+  s.position.set(
+    (Math.floor(Math.random() * 3) - 1) * (ROAD_WIDTH / 3),
+    0.015,
+    i * 8
+  );
+  scene.add(s);
+  stripes.push(s);
 }
 
-// ---------- Game flow ----------
-function startGame() {
-  state = 'playing';
-  score = 0;
-  speed = 6;
-  spawnTimer = 0;
-  spawnInterval = 90;
-  obstacles = [];
-  particles = [];
-  player.y = GROUND_Y;
-  player.vy = 0;
-  player.jumps = 0;
-  frame = 0;
-  initClouds();
-  document.getElementById('start').style.display = 'none';
-  document.getElementById('gameover').style.display = 'none';
-  document.getElementById('score').textContent = '0';
-}
+// ============================================================
+// 7. GAME STATE + LOOP
+// ============================================================
+let speed = 14;
+let score = 0;
+let time = 0;
+const scoreEl = document.getElementById('score');
+const clock = new THREE.Clock();
 
-function die() {
-  state = 'dead';
-  burst(player.x + player.w/2, player.y + player.h/2, 30, '#ef4444');
-  if (score > best) {
-    best = Math.floor(score);
-    localStorage.setItem('gamezzy_best', best);
-    document.getElementById('best').textContent = best;
-  }
-  document.getElementById('finalScore').textContent = Math.floor(score);
-  document.getElementById('gameover').style.display = 'flex';
-}
+function animate() {
+  const dt = Math.min(clock.getDelta(), 0.05);
+  time += dt;
 
-// ---------- Update ----------
-function update() {
-  if (state !== 'playing') return;
+  const delta = speed * dt;
+  score += delta * 0.8;
+  scoreEl.textContent = Math.floor(score);
 
-  frame++;
-  speed += 0.0015; // gradual difficulty ramp
-  score += speed * 0.15;
-  document.getElementById('score').textContent = Math.floor(score);
-
-  // Player physics
-  player.vy += player.gravity;
-  player.y += player.vy;
-  if (player.y >= GROUND_Y) {
-    player.y = GROUND_Y;
-    player.vy = 0;
-    player.jumps = 0;
-  }
-  player.legPhase += 0.4 * (speed / 6);
-
-  // Spawn obstacles
-  spawnTimer++;
-  spawnInterval = Math.max(50, 90 - speed * 3);
-  if (spawnTimer >= spawnInterval) {
-    spawnTimer = 0;
-    const tall = Math.random() < 0.3;
-    obstacles.push({
-      x: W + 40,
-      y: GROUND_Y + player.h - (tall ? 70 : 40),
-      w: tall ? 28 : 36,
-      h: tall ? 70 : 40,
-      color: tall ? '#ef4444' : '#f97316'
-    });
-  }
-
-  // Move obstacles + collision
-  for (let i = obstacles.length - 1; i >= 0; i--) {
-    const o = obstacles[i];
-    o.x -= speed;
-    if (o.x + o.w < 0) { obstacles.splice(i, 1); continue; }
-
-    // AABB collision
-    if (
-      player.x + player.w - 8 > o.x &&
-      player.x + 8 < o.x + o.w &&
-      player.y + player.h > o.y &&
-      player.y < o.y + o.h
-    ) {
-      die();
-      return;
+  // Scroll pillars toward camera
+  pillars.forEach(p => {
+    p.position.z -= delta;
+    if (p.userData.cap) p.userData.cap.position.z = p.position.z;
+    if (p.position.z < -25) {
+      p.position.z += PILLAR_COUNT * PILLAR_SPACING;
+      if (p.userData.cap) p.userData.cap.position.z = p.position.z;
     }
-  }
-
-  // Particles
-  for (let i = particles.length - 1; i >= 0; i--) {
-    const p = particles[i];
-    p.x += p.vx;
-    p.y += p.vy;
-    p.vy += 0.3;
-    p.life -= 0.03;
-    if (p.life <= 0) particles.splice(i, 1);
-  }
-
-  // Clouds
-  clouds.forEach(c => {
-    c.x -= c.speed;
-    if (c.x + c.r < 0) { c.x = W + c.r; c.y = 40 + Math.random() * 120; }
   });
 
-  groundOffset = (groundOffset + speed) % 40;
-}
-
-// ---------- Draw ----------
-function drawCloud(c) {
-  ctx.fillStyle = 'rgba(255,255,255,0.08)';
-  ctx.beginPath();
-  ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
-  ctx.arc(c.x + c.r * 0.7, c.y + 5, c.r * 0.8, 0, Math.PI * 2);
-  ctx.arc(c.x - c.r * 0.7, c.y + 5, c.r * 0.7, 0, Math.PI * 2);
-  ctx.fill();
-}
-
-function drawGround() {
-  // Ground line
-  ctx.strokeStyle = '#22d3ee';
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.moveTo(0, GROUND_Y + player.h);
-  ctx.lineTo(W, GROUND_Y + player.h);
-  ctx.stroke();
-
-  // Moving stripes
-  ctx.strokeStyle = 'rgba(34,211,238,0.3)';
-  ctx.lineWidth = 2;
-  for (let x = -groundOffset; x < W; x += 40) {
-    ctx.beginPath();
-    ctx.moveTo(x, GROUND_Y + player.h + 8);
-    ctx.lineTo(x + 20, GROUND_Y + player.h + 8);
-    ctx.stroke();
-  }
-}
-
-function drawPlayer() {
-  const px = player.x, py = player.y;
-
-  // Shadow
-  ctx.fillStyle = 'rgba(0,0,0,0.4)';
-  ctx.beginPath();
-  ctx.ellipse(px + player.w/2, GROUND_Y + player.h + 4, player.w * 0.6, 6, 0, 0, Math.PI*2);
-  ctx.fill();
-
-  // Body
-  ctx.fillStyle = player.color;
-  ctx.shadowColor = player.color;
-  ctx.shadowBlur = 15;
-  ctx.beginPath();
-  ctx.roundRect(px, py, player.w, player.h, 10);
-  ctx.fill();
-  ctx.shadowBlur = 0;
-
-  // Eye
-  ctx.fillStyle = '#0a0a0f';
-  ctx.beginPath();
-  ctx.arc(px + player.w - 12, py + 16, 5, 0, Math.PI*2);
-  ctx.fill();
-
-  // Animated legs
-  const swing = Math.sin(player.legPhase) * 8;
-  ctx.strokeStyle = player.color;
-  ctx.lineWidth = 4;
-  ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.moveTo(px + 10, py + player.h);
-  ctx.lineTo(px + 10 + swing, py + player.h + 8);
-  ctx.moveTo(px + player.w - 10, py + player.h);
-  ctx.lineTo(px + player.w - 10 - swing, py + player.h + 8);
-  ctx.stroke();
-}
-
-function drawObstacle(o) {
-  ctx.fillStyle = o.color;
-  ctx.shadowColor = o.color;
-  ctx.shadowBlur = 12;
-  ctx.beginPath();
-  ctx.roundRect(o.x, o.y, o.w, o.h, 6);
-  ctx.fill();
-  ctx.shadowBlur = 0;
-
-  // Spike detail
-  ctx.fillStyle = 'rgba(0,0,0,0.3)';
-  ctx.beginPath();
-  ctx.roundRect(o.x + 4, o.y + 4, o.w - 8, 6, 3);
-  ctx.fill();
-}
-
-function drawParticles() {
-  particles.forEach(p => {
-    ctx.globalAlpha = p.life;
-    ctx.fillStyle = p.color;
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, p.size, 0, Math.PI*2);
-    ctx.fill();
+  // Scroll stripes
+  stripes.forEach(s => {
+    s.position.z -= delta;
+    if (s.position.z < -15) s.position.z += 480;
   });
-  ctx.globalAlpha = 1;
+
+  // Animate legs + arms (running cycle)
+  const swing = Math.sin(time * 15) * 0.55;
+  leftLeg.rotation.x = swing;
+  rightLeg.rotation.x = -swing;
+  leftArm.rotation.x = -swing;
+  rightArm.rotation.x = swing;
+
+  // Body bob
+  const bob = Math.abs(Math.sin(time * 15)) * 0.06;
+  body.position.y = 1.2 + bob;
+  head.position.y = 2.0 + bob;
+  dpLogo.position.y = 1.3 + bob;
+
+  // Camera sway
+  camera.position.x = Math.sin(time * 2) * 0.18;
+  camera.lookAt(0, 1.5, 15);
+
+  renderer.render(scene, camera);
+  requestAnimationFrame(animate);
 }
 
-function draw() {
-  ctx.clearRect(0, 0, W, H);
+// ============================================================
+// 8. RESIZE
+// ============================================================
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
 
-  // Background gradient handled by CSS, but add stars
-  ctx.fillStyle = 'rgba(255,255,255,0.5)';
-  for (let i = 0; i < 30; i++) {
-    const sx = (i * 137 + frame * 0.3) % W;
-    const sy = (i * 53) % (GROUND_Y - 60);
-    ctx.fillRect(sx, sy, 2, 2);
-  }
-
-  clouds.forEach(drawCloud);
-  drawGround();
-  obstacles.forEach(drawObstacle);
-  drawPlayer();
-  drawParticles();
-}
-
-function loop() {
-  update();
-  draw();
-  requestAnimationFrame(loop);
-}
-
-// Boot
-initClouds();
-loop();
+// ============================================================
+// 9. BOOT
+// ============================================================
+document.getElementById('loading').remove();
+animate();
 </script>
 </body>
 </html>
