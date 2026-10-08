@@ -13,19 +13,15 @@
     color: #ff7a00;
     font: 800 24px system-ui, sans-serif;
     text-shadow: 0 0 16px rgba(255,120,0,0.9), 0 2px 12px rgba(0,0,0,1);
-    pointer-events: none; z-index: 10;
-    letter-spacing: 1px;
+    pointer-events: none; z-index: 10; letter-spacing: 1px;
   }
   #hud .label { color: #ffcc99; font-size: 14px; font-weight: 600; }
   #zone {
     position: fixed; top: 16px; right: 20px;
-    color: #ffcc44;
-    font: 800 18px system-ui, sans-serif;
+    color: #ffcc44; font: 800 20px system-ui, sans-serif;
     text-shadow: 0 0 12px rgba(255,180,0,0.9), 0 2px 10px rgba(0,0,0,1);
-    pointer-events: none; z-index: 10;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    transition: opacity 0.5s;
+    pointer-events: none; z-index: 10; letter-spacing: 3px;
+    text-transform: uppercase; transition: opacity 0.5s;
   }
   #loading {
     position: fixed; inset: 0;
@@ -35,14 +31,10 @@
     z-index: 100; letter-spacing: 2px;
   }
   #hint {
-    position: fixed; bottom: 24px; left: 50%;
-    transform: translateX(-50%);
-    color: rgba(255,200,80,0.8);
-    font: 600 15px system-ui, sans-serif;
-    text-shadow: 0 2px 8px #000;
-    pointer-events: none; z-index: 10;
-    transition: opacity 0.6s;
-    letter-spacing: 1px;
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    color: rgba(255,200,80,0.8); font: 600 15px system-ui, sans-serif;
+    text-shadow: 0 2px 8px #000; pointer-events: none; z-index: 10;
+    transition: opacity 0.6s; letter-spacing: 1px;
   }
 </style>
 </head>
@@ -63,76 +55,39 @@
 <script type="module">
 import * as THREE from 'three';
 
-// ============================================================
-// ZONE CONFIG — each zone has colors + decoration flag
-// ============================================================
+// Zone configs
 const ZONES = [
-  {
-    name: 'BEACH',
-    skyTop:    0x0a1a3a,
-    skyMid:    0x3a5a8a,
-    skyHorizon:0xff9955,
-    fog:       0x2a1a2a,
-    fogDensity: 0.020,
-    ambient:   0x442233,
-    sun:       0xffaa66,
-    roadColor: 0x8a6a4a,
-    sideColor: 0xffcc88,
-    decor:     'beach',
-    duration:  30
-  },
-  {
-    name: 'JUNGLE',
-    skyTop:    0x051a10,
-    skyMid:    0x1a3a20,
-    skyHorizon:0x88cc66,
-    fog:       0x0a1a10,
-    fogDensity: 0.028,
-    ambient:   0x224422,
-    sun:       0xbbff88,
-    roadColor: 0x4a5a3a,
-    sideColor: 0x88cc66,
-    decor:     'jungle',
-    duration:  30
-  },
-  {
-    name: 'TEMPLE',
-    skyTop:    0x1a0a2a,
-    skyMid:    0x4a1a1a,
-    skyHorizon:0xff5500,
-    fog:       0x2a0a0a,
-    fogDensity: 0.018,
-    ambient:   0x442200,
-    sun:       0xff7722,
-    roadColor: 0x2a2a30,
-    sideColor: 0xffaa00,
-    decor:     'temple',
-    duration:  30
-  },
-  {
-    name: 'FESTIVAL',
-    skyTop:    0x1a0520,
-    skyMid:    0x4a0a4a,
-    skyHorizon:0xff44aa,
-    fog:       0x2a0a2a,
-    fogDensity: 0.016,
-    ambient:   0x442255,
-    sun:       0xff88dd,
-    roadColor: 0x3a2a4a,
-    sideColor: 0xff88cc,
-    decor:     'festival',
-    duration:  30
-  }
+  { name: 'BEACH',
+    skyTop: 0x0a1a4a, skyMid: 0x3a6aaa, skyHorizon: 0xffaa55,
+    fog: 0x2a2a4a, fogDensity: 0.020,
+    ambient: 0x443355, sun: 0xffbb77,
+    roadColor: 0x9a7a5a, lineColor: 0xffdd66,
+    decor: 'beach', duration: 30 },
+  { name: 'JUNGLE',
+    skyTop: 0x051a10, skyMid: 0x2a5a30, skyHorizon: 0x88cc66,
+    fog: 0x0a2010, fogDensity: 0.030,
+    ambient: 0x224422, sun: 0xbbff88,
+    roadColor: 0x4a5a3a, lineColor: 0xaaff66,
+    decor: 'jungle', duration: 30 },
+  { name: 'TEMPLE',
+    skyTop: 0x1a0510, skyMid: 0x5a0a0a, skyHorizon: 0xff4400,
+    fog: 0x3a0a0a, fogDensity: 0.018,
+    ambient: 0x553300, sun: 0xff7733,
+    roadColor: 0x2a1a1a, lineColor: 0xffaa33,
+    decor: 'temple', duration: 30 },
+  { name: 'FESTIVAL',
+    skyTop: 0x1a0525, skyMid: 0x5a0a5a, skyHorizon: 0xff44cc,
+    fog: 0x2a0a2a, fogDensity: 0.016,
+    ambient: 0x553377, sun: 0xff99ee,
+    roadColor: 0x3a2a4a, lineColor: 0xffaaff,
+    decor: 'festival', duration: 30 }
 ];
 
 let currentZone = 0;
-let zoneTimer = 0;
+let zoneElapsed = 0;
 
-// ============================================================
-// SCENE + RENDERER
-// ============================================================
 const scene = new THREE.Scene();
-scene.fog = new THREE.FogExp2(0x2a1a2a, 0.020);
+scene.fog = new THREE.FogExp2(0x2a2a4a, 0.020);
 
 const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 400);
 camera.position.set(0, 3.4, -6.5);
@@ -144,16 +99,14 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.3;
+renderer.toneMappingExposure = 1.25;
 document.body.appendChild(renderer.domElement);
 
-// ============================================================
-// SKY — dynamic, changes with zone
-// ============================================================
+// SKY
 const skyUniforms = {
-  topColor: { value: new THREE.Color(0x0a1a3a) },
-  midColor: { value: new THREE.Color(0x3a5a8a) },
-  horizon:  { value: new THREE.Color(0xff9955) }
+  topColor: { value: new THREE.Color(0x0a1a4a) },
+  midColor: { value: new THREE.Color(0x3a6aaa) },
+  horizon:  { value: new THREE.Color(0xffaa55) }
 };
 
 const skyMat = new THREE.ShaderMaterial({
@@ -191,14 +144,12 @@ const skyMat = new THREE.ShaderMaterial({
 });
 scene.add(new THREE.Mesh(new THREE.SphereGeometry(400, 32, 24), skyMat));
 
-// ============================================================
-// LIGHTS — dynamic
-// ============================================================
-const ambientLight = new THREE.AmbientLight(0x442233, 0.6);
+// LIGHTS
+const ambientLight = new THREE.AmbientLight(0x443355, 0.7);
 scene.add(ambientLight);
 
-const sunLight = new THREE.DirectionalLight(0xffaa66, 1.8);
-sunLight.position.set(-12, 10, 25);
+const sunLight = new THREE.DirectionalLight(0xffbb77, 1.7);
+sunLight.position.set(-12, 12, 25);
 sunLight.castShadow = true;
 sunLight.shadow.mapSize.set(2048, 2048);
 sunLight.shadow.camera.left = -25;
@@ -214,12 +165,10 @@ const backRim = new THREE.DirectionalLight(0x442200, 0.4);
 backRim.position.set(0, 5, -20);
 scene.add(backRim);
 
-// ============================================================
-// VOID GROUND + ROAD
-// ============================================================
+// GROUND + ROAD
 const voidGround = new THREE.Mesh(
   new THREE.PlaneGeometry(500, 500),
-  new THREE.MeshStandardMaterial({ color: 0x000000, roughness: 1, metalness: 0 })
+  new THREE.MeshStandardMaterial({ color: 0x000000, roughness: 1 })
 );
 voidGround.rotation.x = -Math.PI / 2;
 voidGround.position.y = -0.05;
@@ -237,10 +186,10 @@ function makeRoadTexture() {
   const tileSize = size / tiles;
   for (let i = 0; i < tiles; i++) {
     for (let j = 0; j < tiles; j++) {
-      const shade = 12 + Math.random() * 15;
-      x.fillStyle = 'rgb(' + (shade + 6) + ',' + shade + ',' + (shade + 4) + ')';
+      const shade = 12 + Math.random() * 20;
+      x.fillStyle = 'rgb(' + (shade + 8) + ',' + shade + ',' + (shade + 6) + ')';
       x.fillRect(i * tileSize + 2, j * tileSize + 2, tileSize - 4, tileSize - 4);
-      x.strokeStyle = 'rgba(255, 150, 60, ' + (0.10 + Math.random() * 0.15) + ')';
+      x.strokeStyle = 'rgba(255, 180, 90, ' + (0.12 + Math.random() * 0.15) + ')';
       x.lineWidth = 1;
       x.strokeRect(i * tileSize + 2, j * tileSize + 2, tileSize - 4, tileSize - 4);
     }
@@ -256,45 +205,29 @@ const ROAD_WIDTH = 10;
 const ROAD_LENGTH = 700;
 
 const roadMaterial = new THREE.MeshStandardMaterial({
-  map: makeRoadTexture(),
-  roughness: 0.75,
-  metalness: 0.2,
-  color: 0xffffff
+  map: makeRoadTexture(), roughness: 0.75, metalness: 0.15, color: 0xffffff
 });
 
-const road = new THREE.Mesh(
-  new THREE.PlaneGeometry(ROAD_WIDTH, ROAD_LENGTH),
-  roadMaterial
-);
+const road = new THREE.Mesh(new THREE.PlaneGeometry(ROAD_WIDTH, ROAD_LENGTH), roadMaterial);
 road.rotation.x = -Math.PI / 2;
 road.position.set(0, 0.01, ROAD_LENGTH / 2 - 30);
 road.receiveShadow = true;
 scene.add(road);
 
-// Lane lines (color updates per zone)
-const laneLineMaterial = new THREE.MeshBasicMaterial({ color: 0xffaa33 });
-const laneLines = [];
+const laneLineMat = new THREE.MeshBasicMaterial({ color: 0xffdd66 });
 for (let lane = -1; lane <= 1; lane += 2) {
-  const line = new THREE.Mesh(new THREE.PlaneGeometry(0.18, ROAD_LENGTH), laneLineMaterial);
+  const line = new THREE.Mesh(new THREE.PlaneGeometry(0.18, ROAD_LENGTH), laneLineMat);
   line.rotation.x = -Math.PI / 2;
   line.position.set(lane * (ROAD_WIDTH / 3), 0.03, ROAD_LENGTH / 2 - 30);
   scene.add(line);
-  laneLines.push(line);
 }
 
-// ============================================================
-// PILLARS — recycled & re-themed per zone
-// ============================================================
+// PILLARS
 const PILLAR_COUNT = 30;
 const PILLAR_SPACING = 16;
 const pillars = [];
 
-const pillarMat = new THREE.MeshStandardMaterial({
-  color: 0x2a2a30,
-  roughness: 0.9,
-  metalness: 0.15
-});
-
+const pillarMat = new THREE.MeshStandardMaterial({ color: 0x2a1a1a, roughness: 0.9, metalness: 0.1 });
 const glowMat = new THREE.MeshBasicMaterial({ color: 0xffaa33 });
 
 for (let i = 0; i < PILLAR_COUNT; i++) {
@@ -329,464 +262,21 @@ for (let i = 0; i < PILLAR_COUNT; i++) {
     glowTop.position.y = 8.19;
     group.add(glowTop);
 
-    // Warm oil-lamp glow
     const lamp = new THREE.Mesh(
       new THREE.SphereGeometry(0.25, 12, 12),
-      new THREE.MeshBasicMaterial({ color: 0xffcc44 })
+      new THREE.MeshBasicMaterial({ color: 0xffdd55 })
     );
     lamp.position.y = 8.55;
     group.add(lamp);
 
-    const light = new THREE.PointLight(0xffaa44, 1.0, 14);
+    const light = new THREE.PointLight(0xffbb55, 1.0, 14);
     light.position.y = 8.55;
     group.add(light);
 
     group.userData.lamp = lamp;
-    group.userData.light = light;
-    group.userData.side = side;
 
     group.position.set(side * (ROAD_WIDTH / 2 + 2.2), 0, i * PILLAR_SPACING);
     scene.add(group);
     pillars.push(group);
   }
 }
-
-// ============================================================
-// DECORATIONS — beach palms, jungle vines, temple flags, lanterns
-// ============================================================
-const decorations = [];
-
-function makePalmTree(side) {
-  const g = new THREE.Group();
-  const trunk = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.22, 0.35, 6, 8),
-    new THREE.MeshStandardMaterial({ color: 0x4a3020, roughness: 0.9 })
-  );
-  trunk.position.y = 3;
-  trunk.castShadow = true;
-  g.add(trunk);
-
-  const frondMat = new THREE.MeshStandardMaterial({ color: 0x1a4a20, roughness: 0.8 });
-  for (let i = 0; i < 6; i++) {
-    const frond = new THREE.Mesh(
-      new THREE.ConeGeometry(0.4, 2.4, 4),
-      frondMat
-    );
-    frond.position.set(Math.cos(i * 1.05) * 0.6, 6.1, Math.sin(i * 1.05) * 0.6);
-    frond.rotation.z = Math.PI / 3 * Math.cos(i * 1.05);
-    frond.rotation.x = Math.PI / 3 * Math.sin(i * 1.05);
-    g.add(frond);
-  }
-  g.position.set(side * (ROAD_WIDTH / 2 + 4), 0, 0);
-  return g;
-}
-
-function makeJungleVine(side) {
-  const g = new THREE.Group();
-  const vineMat = new THREE.MeshStandardMaterial({ color: 0x2a5a2a, roughness: 0.9 });
-  for (let i = 0; i < 4; i++) {
-    const vine = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.06, 0.06, 4 + Math.random() * 3, 6),
-      vineMat
-    );
-    vine.position.set(
-      side * (ROAD_WIDTH / 2 + 1 + Math.random() * 2),
-      5,
-      (Math.random() - 0.5) * 3
-    );
-    vine.rotation.z = (Math.random() - 0.5) * 0.4;
-    g.add(vine);
-  }
-  return g;
-}
-
-function makeTempleFlag(side) {
-  const g = new THREE.Group();
-  const poleMat = new THREE.MeshStandardMaterial({ color: 0x3a1a0a, roughness: 0.8 });
-  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 5, 8), poleMat);
-  pole.position.y = 2.5;
-  g.add(pole);
-
-  // Buddhist flag colors
-  const colors = [0x2244cc, 0xffcc00, 0xcc2222, 0xffffff, 0xff7700];
-  colors.forEach((col, i) => {
-    const stripe = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.9, 0.2),
-      new THREE.MeshBasicMaterial({ color: col, side: THREE.DoubleSide })
-    );
-    stripe.position.set(0.5, 4.4 - i * 0.22, 0);
-    g.add(stripe);
-  });
-
-  g.position.set(side * (ROAD_WIDTH / 2 + 3.5), 0, 0);
-  return g;
-}
-
-function makeLantern(side) {
-  const g = new THREE.Group();
-  const lanternColors = [0xff4466, 0xffaa22, 0xff66cc, 0x66ff88, 0x66ddff];
-  const col = lanternColors[Math.floor(Math.random() * lanternColors.length)];
-
-  const lantern = new THREE.Mesh(
-    new THREE.SphereGeometry(0.5, 12, 12),
-    new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.9 })
-  );
-  lantern.position.y = 6;
-
-  // Inner glow
-  const innerLight = new THREE.PointLight(col, 1.2, 10);
-  innerLight.position.y = 6;
-
-  g.add(lantern);
-  g.add(innerLight);
-  g.position.set(side * (ROAD_WIDTH / 2 + 2.5), 0, 0);
-  return g;
-}
-
-// Build a pool of decorations per zone (recycled, repositioned)
-const ZONE_DECOR_COUNT = 16;
-const zoneDecorations = { beach: [], jungle: [], temple: [], festival: [] };
-
-for (let i = 0; i < ZONE_DECOR_COUNT; i++) {
-  for (let side = -1; side <= 1; side += 2) {
-    const palm = makePalmTree(side);
-    palm.position.z = i * 18;
-    palm.visible = false;
-    scene.add(palm);
-    zoneDecorations.beach.push(palm);
-
-    const vine = makeJungleVine(side);
-    vine.position.z = i * 18;
-    vine.visible = false;
-    scene.add(vine);
-    zoneDecorations.jungle.push(vine);
-
-    const flag = makeTempleFlag(side);
-    flag.position.z = i * 18;
-    flag.visible = false;
-    scene.add(flag);
-    zoneDecorations.temple.push(flag);
-
-    const lantern = makeLantern(side);
-    lantern.position.z = i * 18;
-    lantern.visible = false;
-    scene.add(lantern);
-    zoneDecorations.festival.push(lantern);
-  }
-}
-
-function setZoneDecorVisible(zoneKey) {
-  Object.keys(zoneDecorations).forEach(key => {
-    zoneDecorations[key].forEach(d => {
-      d.visible = (key === zoneKey);
-    });
-  });
-}
-
-// ============================================================
-// CHARACTER
-// ============================================================
-const character = new THREE.Group();
-character.position.set(0, 0, 0);
-character.scale.setScalar(1.15);
-scene.add(character);
-
-const SHIRT_COLOR = 0xff7a00;
-const SKIN_COLOR = 0xf0b088;
-const PANTS_COLOR = 0x101018;
-
-const shirtMat = new THREE.MeshStandardMaterial({ color: SHIRT_COLOR, roughness: 0.55, emissive: 0x220800, emissiveIntensity: 0.6 });
-const skinMat = new THREE.MeshStandardMaterial({ color: SKIN_COLOR, roughness: 0.75 });
-const pantsMat = new THREE.MeshStandardMaterial({ color: PANTS_COLOR, roughness: 0.9 });
-const shoeMat = new THREE.MeshStandardMaterial({ color: 0x1a1a22, roughness: 0.5 });
-
-const hips = new THREE.Group();
-hips.position.y = 0.95;
-character.add(hips);
-
-const torso = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.85, 0.42), shirtMat);
-torso.position.y = 0.42;
-torso.castShadow = true;
-hips.add(torso);
-
-// Lotus emblem on chest
-const lotusCanvas = document.createElement('canvas');
-lotusCanvas.width = lotusCanvas.height = 128;
-const lx = lotusCanvas.getContext('2d');
-lx.clearRect(0, 0, 128, 128);
-lx.strokeStyle = '#ffdd44';
-lx.lineWidth = 5;
-lx.beginPath();
-lx.arc(64, 64, 40, 0, Math.PI * 2);
-lx.stroke();
-lx.fillStyle = '#ffffff';
-for (let i = 0; i < 8; i++) {
-  const a = (i / 8) * Math.PI * 2;
-  lx.beginPath();
-  lx.ellipse(64 + Math.cos(a) * 20, 64 + Math.sin(a) * 20, 10, 6, a, 0, Math.PI * 2);
-  lx.fill();
-}
-const lotusTex = new THREE.CanvasTexture(lotusCanvas);
-const lotus = new THREE.Mesh(
-  new THREE.PlaneGeometry(0.4, 0.4),
-  new THREE.MeshBasicMaterial({ map: lotusTex, transparent: true })
-);
-lotus.position.set(0, 0.42, 0.221);
-hips.add(lotus);
-
-// DP logo on back
-const dpCanvas = document.createElement('canvas');
-dpCanvas.width = dpCanvas.height = 256;
-const dpx = dpCanvas.getContext('2d');
-dpx.clearRect(0, 0, 256, 256);
-dpx.beginPath();
-dpx.arc(128, 128, 95, 0, Math.PI * 2);
-dpx.fillStyle = '#000000';
-dpx.fill();
-dpx.lineWidth = 10;
-dpx.strokeStyle = '#ff7a00';
-dpx.stroke();
-dpx.fillStyle = '#ffffff';
-dpx.font = 'bold 100px system-ui, sans-serif';
-dpx.textAlign = 'center';
-dpx.textBaseline = 'middle';
-dpx.fillText('DP', 128, 142);
-const dpTex = new THREE.CanvasTexture(dpCanvas);
-const dpLogo = new THREE.Mesh(
-  new THREE.PlaneGeometry(0.55, 0.55),
-  new THREE.MeshBasicMaterial({ map: dpTex, transparent: true })
-);
-dpLogo.position.set(0, 0.42, -0.221);
-dpLogo.rotation.y = Math.PI;
-hips.add(dpLogo);
-
-// Head
-const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.14, 8), skinMat);
-neck.position.y = 1.02;
-hips.add(neck);
-
-const head = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.46, 0.42), skinMat);
-head.position.y = 1.35;
-head.castShadow = true;
-hips.add(head);
-
-const hair = new THREE.Mesh(
-  new THREE.BoxGeometry(0.46, 0.14, 0.46),
-  new THREE.MeshStandardMaterial({ color: 0x1a0f08, roughness: 0.95 })
-);
-hair.position.y = 1.58;
-hips.add(hair);
-
-// Arms
-function makeArm(side) {
-  const arm = new THREE.Group();
-  arm.position.set(side * 0.5, 0.85, 0);
-  const upper = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.45, 8), shirtMat);
-  upper.position.y = -0.22;
-  upper.castShadow = true;
-  arm.add(upper);
-  const lower = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.42, 8), skinMat);
-  lower.position.y = -0.65;
-  lower.castShadow = true;
-  arm.add(lower);
-  const hand = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, 0.12), skinMat);
-  hand.position.y = -0.9;
-  hand.castShadow = true;
-  arm.add(hand);
-  hips.add(arm);
-  return arm;
-}
-const leftArm = makeArm(-1);
-const rightArm = makeArm(1);
-
-// Legs
-function makeLeg(side) {
-  const leg = new THREE.Group();
-  leg.position.set(side * 0.19, 0, 0);
-  const upper = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.11, 0.5, 8), pantsMat);
-  upper.position.y = -0.28;
-  upper.castShadow = true;
-  leg.add(upper);
-  const lower = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.09, 0.45, 8), pantsMat);
-  lower.position.y = -0.78;
-  lower.castShadow = true;
-  leg.add(lower);
-  const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.13, 0.36), shoeMat);
-  shoe.position.set(0, -1.04, 0.07);
-  shoe.castShadow = true;
-  leg.add(shoe);
-  hips.add(leg);
-  return leg;
-}
-const leftLeg = makeLeg(-1);
-const rightLeg = makeLeg(1);
-
-const blob = new THREE.Mesh(
-  new THREE.CircleGeometry(0.75, 32),
-  new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.65 })
-);
-blob.rotation.x = -Math.PI / 2;
-blob.position.y = 0.01;
-character.add(blob);
-
-// ============================================================
-// SPEED STRIPES
-// ============================================================
-const stripes = [];
-const stripeGeo = new THREE.PlaneGeometry(0.5, 3.5);
-const stripeMat = new THREE.MeshBasicMaterial({ color: 0xffaa33, transparent: true, opacity: 0.4 });
-for (let i = 0; i < 80; i++) {
-  const s = new THREE.Mesh(stripeGeo, stripeMat);
-  s.rotation.x = -Math.PI / 2;
-  s.position.set((Math.floor(Math.random() * 3) - 1) * (ROAD_WIDTH / 3), 0.04, i * 8);
-  scene.add(s);
-  stripes.push(s);
-}
-
-// ============================================================
-// LANE SYSTEM
-// ============================================================
-const LANE_X = [-ROAD_WIDTH / 3, 0, ROAD_WIDTH / 3];
-let currentLane = 1;
-let targetLaneX = LANE_X[currentLane];
-let currentX = LANE_X[currentLane];
-const LANE_SWITCH_SPEED = 12;
-const MAX_TILT = 0.35;
-
-function switchLane(direction) {
-  const next = currentLane + direction;
-  if (next < 0 || next > 2) return;
-  currentLane = next;
-  targetLaneX = LANE_X[currentLane];
-  const hint = document.getElementById('hint');
-  if (hint) hint.style.opacity = '0';
-}
-
-window.addEventListener('keydown', (e) => {
-  if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
-    e.preventDefault();
-    switchLane(-1);
-  } else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
-    e.preventDefault();
-    switchLane(1);
-  }
-});
-
-let touchStartX = 0, touchStartY = 0;
-window.addEventListener('touchstart', (e) => {
-  touchStartX = e.touches[0].clientX;
-  touchStartY = e.touches[0].clientY;
-}, { passive: true });
-window.addEventListener('touchend', (e) => {
-  const dx = e.changedTouches[0].clientX - touchStartX;
-  const dy = e.changedTouches[0].clientY - touchStartY;
-  if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) {
-    switchLane(dx > 0 ? 1 : -1);
-  }
-});
-
-// ============================================================
-// ZONE SWITCHER
-// ============================================================
-const zoneEl = document.getElementById('zone');
-
-function applyZone(idx) {
-  const z = ZONES[idx];
-  skyUniforms.topColor.value.setHex(z.skyTop);
-  skyUniforms.midColor.value.setHex(z.skyMid);
-  skyUniforms.horizon.value.setHex(z.skyHorizon);
-
-  scene.fog.color.setHex(z.fog);
-  scene.fog.density = z.fogDensity;
-
-  ambientLight.color.setHex(z.ambient);
-  sunLight.color.setHex(z.sun);
-
-  glowMat.color.setHex(z.sideColor);
-  laneLineMaterial.color.setHex(z.sideColor);
-  stripeMat.color.setHex(z.sideColor);
-
-  pillarMat.color.setHex(z.roadColor);
-  roadMaterial.color.setHex(z.roadColor);
-
-  setZoneDecorVisible(z.decor);
-
-  zoneEl.textContent = z.name;
-  zoneEl.style.opacity = '1';
-  setTimeout(() => { zoneEl.style.opacity = '0.4'; }, 2200);
-}
-
-// ============================================================
-// GAME LOOP
-// ============================================================
-let speed = 15;
-let score = 0;
-let time = 0;
-let zoneElapsed = 0;
-const scoreEl = document.getElementById('score');
-const clock = new THREE.Clock();
-const CAM_BASE = new THREE.Vector3(0, 3.4, -6.5);
-
-// initial
-applyZone(0);
-
-function animate() {
-  const dt = Math.min(clock.getDelta(), 0.05);
-  time += dt;
-  zoneElapsed += dt;
-
-  if (zoneElapsed >= ZONES[currentZone].duration) {
-    zoneElapsed = 0;
-    currentZone = (currentZone + 1) % ZONES.length;
-    applyZone(currentZone);
-  }
-
-  const delta = speed * dt;
-  score += delta * 0.8;
-  scoreEl.textContent = Math.floor(score);
-
-  // Scroll pillars
-  pillars.forEach(p => {
-    p.position.z -= delta;
-    if (p.position.z < -30) p.position.z += PILLAR_COUNT * PILLAR_SPACING;
-    if (p.userData.lamp) {
-      p.userData.lamp.material.color.setHSL(0.09, 1, 0.55 + Math.sin(time * 8 + p.position.x) * 0.1);
-    }
-  });
-
-  // Scroll decorations
-  Object.values(zoneDecorations).forEach(arr => {
-    arr.forEach(d => {
-      d.position.z -= delta;
-      if (d.position.z < -20) d.position.z += ZONE_DECOR_COUNT * 18;
-    });
-  });
-
-  // Scroll stripes
-  stripes.forEach(s => {
-    s.position.z -= delta;
-    if (s.position.z < -15) s.position.z += 640;
-  });
-
-  // Lane movement
-  const dx = targetLaneX - currentX;
-  currentX += dx * Math.min(1, dt * LANE_SWITCH_SPEED);
-  character.position.x = currentX;
-
-  const tiltTarget = -dx * 0.55;
-  character.rotation.z += (tiltTarget - character.rotation.z) * Math.min(1, dt * 8);
-  character.rotation.z = THREE.MathUtils.clamp(character.rotation.z, -MAX_TILT, MAX_TILT);
-
-  // Running animation
-  const swing = Math.sin(time * 16) * 0.85;
-  const bob = Math.abs(Math.sin(time * 16)) * 0.08;
-
-  leftLeg.rotation.x = swing;
-  rightLeg.rotation.x = -swing;
-  leftArm.rotation.x = -swing * 0.9;
-  rightArm.rotation.x = swing * 0.9;
-  leftArm.rotation.z = 0.15;
-  rightArm.rotation.z = -0.15;
-
-  hips.position.y = 0.95 + bob;
-  hips.rotation.y = Math.sin(time *
